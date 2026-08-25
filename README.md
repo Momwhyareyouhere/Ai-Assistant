@@ -30,8 +30,6 @@ A desktop AI assistant inspired by "Hey Google" for Linux. Voice-activated, ligh
 ## Usage
 
 ```bash
-source .venv/bin/activate
-
 # Interactive text mode
 python assistant.py -i
 
