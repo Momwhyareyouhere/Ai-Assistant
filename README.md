@@ -46,7 +46,7 @@ python assistant.py "what time is it"
 
 ## Setup
 
-1. Get an API key from [NVIDIA NIM](https://build.nvidia.com/)
+1. Get an API key from [NVIDIA NIM](https://build.nvidia.com/settings/api-keys)
 2. Add your key to `.env`:
    ```
    NVIDIA_NIM_API_KEY=nvapi-your-key-here
