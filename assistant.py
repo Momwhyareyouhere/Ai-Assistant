@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from dotenv import load_dotenv
+load_dotenv()
 import os
 import sys
 import re
@@ -36,9 +38,9 @@ try:
 except ImportError:
     PYGAME_AVAILABLE = False
 
-API_BASE = "https://opencode.ai/zen/v1"
-DEFAULT_MODEL = "big-pickle"
-WAKE_WORD = "assistant"
+API_BASE = "https://integrate.api.nvidia.com/v1"
+DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+WAKE_WORD = "hey assistant"
 
 FULL_SYSTEM_ACCESS = False
 
@@ -50,103 +52,41 @@ SAFE_PATHS = [
     os.path.expanduser("~/assistant"),
 ]
 
-SYSTEM_PROMPT_SAFE = """You are a helpful AI assistant with system access.
+SYSTEM_PROMPT_SAFE = """You are a helpful, friendly AI assistant. Keep responses concise and conversational.
 
-Available tools you can use by responding in a special JSON format:
+IMPORTANT: Only use tools when the user explicitly asks you to DO something (launch an app, read/write a file, run a command, etc.). For greetings, questions, or conversation - just respond directly without tools.
 
-1. LAUNCH_APP - Open an application
-   Format: {"tool": "launch_app", "app": "<app_name>"}
-   Examples: firefox, code, chrome, nautilus, terminal, discord, steam
-   For flatpak apps: use the flatpak name or partial name
+Available tools (use JSON format ONLY when user asks you to perform an action):
+- launch_app: {"tool": "launch_app", "app": "<name>"}
+- read_file: {"tool": "read_file", "path": "<path>"}
+- write_file: {"tool": "write_file", "path": "<path>", "content": "<text>"}
+- list_dir: {"tool": "list_dir", "path": "<path>"}
+- delete_file: {"tool": "delete_file", "path": "<path>"}
+- run_cmd: {"tool": "run_cmd", "cmd": "<command>"}
+- install_app: {"tool": "install_app", "app": "<package_name>"}
+- remove_app: {"tool": "remove_app", "app": "<package_name>"}
+- music_control: {"tool": "music_control", "action": "<play/pause/next/prev/stop>"}
+- music_info: {"tool": "music_info"}
 
-2. WEB_SEARCH - Search the web in browser
-   Format: {"tool": "web_search", "query": "<search_terms>"}
-   Opens default browser with the search
+Respond with just the JSON tool call. After getting results, explain briefly."""
 
-3. READ_FILE - Read text from a file
-   Format: {"tool": "read_file", "path": "<absolute_path>"}
-   Path must be under user's home directory
+SYSTEM_PROMPT_FULL = """You are a helpful AI assistant with full system access. Keep responses concise and conversational.
 
-4. WRITE_FILE - Create or write to a file
-   Format: {"tool": "write_file", "path": "<absolute_path>", "content": "<text>"}
-   Overwrites existing files, so be careful
+IMPORTANT: Only use tools when the user explicitly asks you to DO something (launch an app, read/write a file, run a command, install/remove apps, control music, etc.). For greetings, questions, or conversation - just respond directly without tools.
 
-5. LIST_DIR - List files in a directory
-   Format: {"tool": "list_dir", "path": "<absolute_path>"}
+Available tools (use JSON format ONLY when user asks you to perform an action):
+- launch_app: {"tool": "launch_app", "app": "<name>"}
+- read_file: {"tool": "read_file", "path": "<path>"}
+- write_file: {"tool": "write_file", "path": "<path>", "content": "<text>"}
+- list_dir: {"tool": "list_dir", "path": "<path>"}
+- delete_file: {"tool": "delete_file", "path": "<path>"}
+- run_cmd: {"tool": "run_cmd", "cmd": "<command>"}
+- install_app: {"tool": "install_app", "app": "<package_name>"}
+- remove_app: {"tool": "remove_app", "app": "<package_name>"}
+- music_control: {"tool": "music_control", "action": "<play/pause/next/prev/stop>"}
+- music_info: {"tool": "music_info"}
 
-6. DELETE_FILE - Delete a file (requires confirmation)
-   Format: {"tool": "delete_file", "path": "<absolute_path>"}
-
-7. RUN_CMD - Run a shell command (safe READ-ONLY commands only)
-   Format: {"tool": "run_cmd", "cmd": "<command>"}
-   
-   MANY safe commands available including:
-   - File listing: ls, find, tree, du, df
-   - File reading: cat, head, tail, less, more, wc, nl, od, strings
-   - File info: file, stat, du, df, lsblk
-   - Text processing: grep, awk, sed, sort, uniq, cut, paste, tr, diff, wc
-   - Process info: ps, top, htop, pstree, pgrep, w, who
-   - System info: uname, hostname, uptime, free, vmstat, lscpu, lspci, lsusb
-   - Network info: ss, netstat, ip, ping
-   - Git info: git status, git log, git diff, git branch
-   - And many more read-only commands
-
-   DANGEROUS commands are BLOCKED (redirects, pipes, sudo, rm, chmod, etc.)
-
-When you want to use a tool, respond ONLY with the JSON.
-When the tool result comes back, explain it to the user in natural language.
-
-Be careful with:
-- File deletions
-- Overwriting files
-- Paths outside the user's home directory
-"""
-
-SYSTEM_PROMPT_FULL = """You are a helpful AI assistant with FULL SYSTEM ACCESS TO THE USER'S COMPUTER.
-
-The user has enabled FULL SYSTEM MODE (-s flag). You have unrestricted access to:
-- Run ANY shell command
-- Read/write/delete ANY files
-- Install packages
-- Modify system configuration
-- Full system administration
-
-Available tools:
-
-1. LAUNCH_APP - Open an application
-   Format: {"tool": "launch_app", "app": "<app_name>"}
-
-2. WEB_SEARCH - Search the web in browser
-   Format: {"tool": "web_search", "query": "<search_terms>"}
-
-3. READ_FILE - Read text from a file
-   Format: {"tool": "read_file", "path": "<absolute_path>"}
-   Can read ANY path
-
-4. WRITE_FILE - Create or write to a file
-   Format: {"tool": "write_file", "path": "<absolute_path>", "content": "<text>"}
-
-5. LIST_DIR - List files in a directory
-   Format: {"tool": "list_dir", "path": "<absolute_path>"}
-
-6. DELETE_FILE - Delete a file or directory
-   Format: {"tool": "delete_file", "path": "<absolute_path>"}
-
-7. RUN_CMD - Run ANY shell command
-   Format: {"tool": "run_cmd", "cmd": "<command>"}
-   
-   NO RESTRICTIONS. You can run:
-   - Package management: apt, pacman, dnf, yum, pip, npm, etc.
-   - System commands: rm, chmod, chown, cp, mv, etc.
-   - Networking: curl, wget, ssh, etc.
-   - Script execution, and more.
-
-When you want to use a tool, respond ONLY with the JSON.
-When the tool result comes back, explain it to the user in natural language.
-
-IMPORTANT: The user trusts you with full system access.
-Be careful and explain what you're doing when doing dangerous operations.
-"""
+Respond with just the JSON tool call. After getting results, explain briefly."""
 
 def get_system_prompt():
     global FULL_SYSTEM_ACCESS
@@ -329,7 +269,7 @@ def clean_text_for_tts(text: str) -> str:
     return text
 
 def get_model() -> str:
-    return os.environ.get("BIG_PICKLE_MODEL", DEFAULT_MODEL)
+    return os.environ.get("NVIDIA_NIM_MODEL", DEFAULT_MODEL)
 
 def get_available_apps() -> dict:
     apps = {}
@@ -449,15 +389,6 @@ def launch_app(app_name: str) -> str:
         return f"SUCCESS: Launched '{app_name}'"
     except Exception as e:
         return f"ERROR: Failed to launch '{app_name}': {e}"
-
-def web_search(query: str) -> str:
-    search_url = f"https://www.google.com/search?q={requests.utils.quote(query)}"
-    
-    try:
-        subprocess.Popen(['xdg-open', search_url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return f"SUCCESS: Opened web search for '{query}' in default browser"
-    except Exception as e:
-        return f"ERROR: Failed to open browser: {e}"
 
 def read_file(path: str) -> str:
     safe, real_path = is_safe_path(path)
@@ -675,6 +606,138 @@ def run_cmd(cmd: str) -> str:
     except Exception as e:
         return f"ERROR: Command failed: {e}"
 
+def detect_package_manager() -> str:
+    if check_installed('pacman'):
+        return 'pacman'
+    elif check_installed('apt'):
+        return 'apt'
+    elif check_installed('dnf'):
+        return 'dnf'
+    elif check_installed('yum'):
+        return 'yum'
+    elif check_installed('zypper'):
+        return 'zypper'
+    elif check_installed('brew'):
+        return 'brew'
+    return None
+
+def install_app(app_name: str) -> str:
+    global FULL_SYSTEM_ACCESS
+    if not FULL_SYSTEM_ACCESS:
+        return "ERROR: Install requires full system access. Use -s flag."
+    
+    pkg_manager = detect_package_manager()
+    if not pkg_manager:
+        return "ERROR: No supported package manager found."
+    
+    try:
+        if pkg_manager == 'pacman':
+            result = subprocess.run(['sudo', 'pacman', '-S', '--noconfirm', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'apt':
+            result = subprocess.run(['sudo', 'apt', 'install', '-y', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'dnf':
+            result = subprocess.run(['sudo', 'dnf', 'install', '-y', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'yum':
+            result = subprocess.run(['sudo', 'yum', 'install', '-y', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'zypper':
+            result = subprocess.run(['sudo', 'zypper', 'install', '-y', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'brew':
+            result = subprocess.run(['brew', 'install', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        
+        output = result.stdout + result.stderr
+        if result.returncode == 0:
+            return f"SUCCESS: Installed '{app_name}' using {pkg_manager}"
+        else:
+            return f"ERROR: Failed to install '{app_name}': {output[-500:]}"
+    except subprocess.TimeoutExpired:
+        return f"ERROR: Installation timed out"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+def remove_app(app_name: str) -> str:
+    global FULL_SYSTEM_ACCESS
+    if not FULL_SYSTEM_ACCESS:
+        return "ERROR: Remove requires full system access. Use -s flag."
+    
+    pkg_manager = detect_package_manager()
+    if not pkg_manager:
+        return "ERROR: No supported package manager found."
+    
+    try:
+        if pkg_manager == 'pacman':
+            result = subprocess.run(['sudo', 'pacman', '-R', '--noconfirm', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'apt':
+            result = subprocess.run(['sudo', 'apt', 'remove', '-y', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'dnf':
+            result = subprocess.run(['sudo', 'dnf', 'remove', '-y', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'yum':
+            result = subprocess.run(['sudo', 'yum', 'remove', '-y', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'zypper':
+            result = subprocess.run(['sudo', 'zypper', 'remove', '-y', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        elif pkg_manager == 'brew':
+            result = subprocess.run(['brew', 'uninstall', app_name], 
+                                   capture_output=True, text=True, timeout=120)
+        
+        output = result.stdout + result.stderr
+        if result.returncode == 0:
+            return f"SUCCESS: Removed '{app_name}' using {pkg_manager}"
+        else:
+            return f"ERROR: Failed to remove '{app_name}': {output[-500:]}"
+    except subprocess.TimeoutExpired:
+        return f"ERROR: Removal timed out"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+def music_control(action: str) -> str:
+    valid_actions = ['play', 'pause', 'stop', 'next', 'previous']
+    if action == 'pause':
+        action = 'play-pause'
+    elif action == 'prev':
+        action = 'previous'
+    
+    if action not in ['play', 'play-pause', 'stop', 'next', 'previous']:
+        return f"ERROR: Invalid action '{action}'. Valid: play, pause, stop, next, prev"
+    
+    try:
+        result = subprocess.run(['playerctl', action], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            return f"SUCCESS: Music {action} executed"
+        else:
+            error = result.stderr.strip()
+            if 'No players found' in error:
+                return "ERROR: No music player found. Open YouTube, Spotify, or any media player first."
+            return f"ERROR: {error}"
+    except FileNotFoundError:
+        return "ERROR: playerctl not installed"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+def music_info() -> str:
+    try:
+        result = subprocess.run(['playerctl', 'metadata', '--format', '{{artist}} - {{title}}\nAlbum: {{album}}'], 
+                               capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            status_result = subprocess.run(['playerctl', 'status'], capture_output=True, text=True, timeout=10)
+            status = status_result.stdout.strip() if status_result.returncode == 0 else "Unknown"
+            return f"Now playing: {result.stdout.strip()}\nStatus: {status}"
+        else:
+            return "ERROR: No music player found or nothing playing."
+    except FileNotFoundError:
+        return "ERROR: playerctl not installed"
+    except Exception as e:
+        return f"ERROR: {e}"
+
 def extract_json_objects(text: str) -> list:
     results = []
     stack = []
@@ -731,12 +794,6 @@ def execute_tool(tool_data: dict) -> str:
             return "ERROR: No app name specified"
         return launch_app(app)
     
-    elif tool == 'web_search':
-        query = tool_data.get('query', '')
-        if not query:
-            return "ERROR: No search query specified"
-        return web_search(query)
-    
     elif tool == 'read_file':
         path = tool_data.get('path', '')
         if not path:
@@ -766,6 +823,27 @@ def execute_tool(tool_data: dict) -> str:
             return "ERROR: No command specified"
         return run_cmd(cmd)
     
+    elif tool == 'install_app':
+        app = tool_data.get('app', '')
+        if not app:
+            return "ERROR: No app name specified"
+        return install_app(app)
+    
+    elif tool == 'remove_app':
+        app = tool_data.get('app', '')
+        if not app:
+            return "ERROR: No app name specified"
+        return remove_app(app)
+    
+    elif tool == 'music_control':
+        action = tool_data.get('action', '')
+        if not action:
+            return "ERROR: No action specified (play, pause, stop, next, prev)"
+        return music_control(action)
+    
+    elif tool == 'music_info':
+        return music_info()
+    
     return f"ERROR: Unknown tool: {tool}"
 
 def ask_with_tools(question: str, model: str = None, messages_context: list = None, use_tts: bool = False, tts_gtts: bool = False) -> tuple:
@@ -774,7 +852,7 @@ def ask_with_tools(question: str, model: str = None, messages_context: list = No
     
     headers = {"Content-Type": "application/json"}
     
-    api_key = os.environ.get("OPENCODE_API_KEY")
+    api_key = os.environ.get("NVIDIA_NIM_API_KEY")
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     
@@ -839,7 +917,7 @@ def ask(question: str, model: str = None, messages_context: list = None) -> tupl
     
     headers = {"Content-Type": "application/json"}
     
-    api_key = os.environ.get("OPENCODE_API_KEY")
+    api_key = os.environ.get("NVIDIA_NIM_API_KEY")
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     
@@ -984,11 +1062,11 @@ def listen_once(recognizer, source, use_whisper: bool = False, phrase_time_limit
                     f.write(audio.get_wav_data())
                     wav_path = f.name
                 
-                api_key = os.environ.get("OPENCODE_API_KEY")
+                api_key = os.environ.get("NVIDIA_NIM_API_KEY")
                 if api_key:
                     client = WhisperClient(api_key=api_key)
                 else:
-                    client = WhisperClient(base_url="https://opencode.ai/zen/v1", api_key="dummy")
+                    client = WhisperClient(base_url="https://integrate.api.nvidia.com/v1", api_key="dummy")
                 
                 with open(wav_path, 'rb') as audio_file:
                     transcription = client.audio.transcriptions.create(
@@ -1053,13 +1131,12 @@ def voice_mode(use_gtts: bool = False, use_whisper: bool = False, energy_thresho
         return stop_requested
     
     print("=" * 60)
-    print("  Big Pickle AI Assistant - VOICE MODE")
+    print("  AI Assistant - VOICE MODE")
     print("=" * 60)
     print(f"Model: {model}")
     print(f"Wake word: '{WAKE_WORD}'")
     print("")
     print("Say 'Assistant' followed by your request.")
-    print("Capabilities: launch apps, search web, read/write files, list dirs")
     print("")
     print("Say 'shut up' or 'stop talking' to interrupt TTS.")
     print("Say 'quit' or 'exit' to stop. Press Ctrl+C at any time.")
@@ -1162,18 +1239,9 @@ def voice_mode(use_gtts: bool = False, use_whisper: bool = False, energy_thresho
 def interactive_mode():
     model = get_model()
     print("=" * 50)
-    print("  Big Pickle AI Assistant (Interactive Mode)")
+    print("  AI Assistant (Interactive Mode)")
     print("=" * 50)
     print(f"Model: {model}")
-    print("")
-    print("Capabilities:")
-    print("  - Ask questions and chat")
-    print("  - Launch apps: 'launch firefox', 'open discord'")
-    print("  - Web search: 'search the web for python tutorial'")
-    print("  - Read files: 'read ~/test.txt'")
-    print("  - Write files: 'write hello to ~/test.txt'")
-    print("  - List files: 'list my documents'")
-    print("  - Delete files: 'delete ~/test.txt' (with confirmation)")
     print("")
     print("Type 'exit' or 'quit' to end.")
     print("-" * 50)
@@ -1190,8 +1258,9 @@ def interactive_mode():
             
             if user_input.lower() == 'model':
                 print(f"\nCurrent model: {model}")
-                print(f"Available free models: big-pickle, nemotron-3-super-free, hy3-preview-free,")
-                print(f"                       ling-2.6-flash-free, minimax-m2.5-free, trinity-large-preview-free")
+                print(f"Available NVIDIA NIM models: nvidia/nemotron-3-super-120b-a12b, nvidia/nemotron-3-nano-30b-a3b,")
+                print(f"                             nvidia/nemotron-3.5-lightning-30b-a3b, nvidia/nemotron-mini-4b-instruct,")
+                print(f"                             meta/llama-3.1-8b-instruct, meta/llama-3.3-70b-instruct")
                 new_model = input("Enter new model name (or press Enter to keep current): ").strip()
                 if new_model:
                     model = new_model
@@ -1224,7 +1293,7 @@ def interactive_mode():
             print(f"\nError: {e}")
 
 def print_help():
-    print("Big Pickle AI Assistant")
+    print("AI Assistant")
     print("")
     print("Usage:")
     print("  python assistant.py <your question>    # Single question")
@@ -1251,9 +1320,10 @@ def print_help():
     print("  espeak portaudio python-pip")
     print("  pip install SpeechRecognition pyaudio")
     print("")
-    print("Free models (set via BIG_PICKLE_MODEL env var):")
-    print("  big-pickle, nemotron-3-super-free, hy3-preview-free,")
-    print("  ling-2.6-flash-free, minimax-m2.5-free, trinity-large-preview-free")
+    print("NVIDIA NIM models (set via NVIDIA_NIM_API_KEY env var):")
+    print("  nvidia/nemotron-3-super-120b-a12b, nvidia/nemotron-3-nano-30b-a3b,")
+    print("  nvidia/nemotron-3.5-lightning-30b-a3b, nvidia/nemotron-mini-4b-instruct,")
+    print("  meta/llama-3.1-8b-instruct, meta/llama-3.3-70b-instruct")
     sys.exit(0)
 
 def main():
@@ -1271,13 +1341,19 @@ def main():
     if '-s' in args or '--system' in args:
         FULL_SYSTEM_ACCESS = True
         print("\n" + "=" * 60)
-        print("  ⚠️  FULL SYSTEM ACCESS MODE ENABLED")
+        print("  FULL SYSTEM ACCESS MODE ENABLED")
         print("=" * 60)
-        print("  - All shell commands allowed")
-        print("  - No file path restrictions")
-        print("  - Use with caution!")
+        print("  WARNING: I don't recommend using full mode.")
+        print("  If you want to continue, please enter your sudo password.")
+        print("  It will be reset after you start a new session.")
+        print("  Use with caution!")
         print("=" * 60 + "\n")
-        time.sleep(1)
+        
+        ret = os.system('sudo -v')
+        if ret != 0:
+            print("  ERROR: Sudo authentication failed. Exiting.")
+            sys.exit(1)
+        print("")
     
     if '-h' in args or '--help' in args:
         print_help()
