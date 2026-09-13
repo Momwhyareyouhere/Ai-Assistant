@@ -67,19 +67,16 @@ pip install SpeechRecognition pyaudio
 **Debian/Ubuntu:**
 ```bash
 sudo apt install espeak portaudio19-dev playerctl
-pip install SpeechRecognition pyaudio
 ```
 
 **Fedora:**
 ```bash
 sudo dnf install espeak-ng portaudio-devel playerctl
-pip install SpeechRecognition pyaudio
 ```
 
 **openSUSE:**
 ```bash
 sudo zypper install espeak-ng portaudio-devel playerctl
-pip install SpeechRecognition pyaudio
 ```
 
 ## Models
